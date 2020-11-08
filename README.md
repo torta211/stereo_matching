@@ -23,7 +23,7 @@ stereo_matching.exe img_path_1 img_path_2 output_name focal_length baseline dmin
 
 ### original inputs
 
-<img src="data/Art_lowill/0.png" width="425"/> <img src="data/Art_lowill/1.png" width="425"/> 
+<img src="data/Art_lowill/0.png" width="230"/> <img src="data/Art_lowill/1.png" width="230"/> 
 
 ### result with a window size of 5, and a occlusion weight of 20 (left: naive, right: dynamic programming):
 
