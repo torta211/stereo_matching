@@ -23,11 +23,11 @@ stereo_matching.exe img_path_1 img_path_2 output_name focal_length baseline dmin
 
 ### original inputs
 
-<img src="data/Art_lowill/0.png" width="230"/> <img src="data/Art_lowill/1.png" width="230"/> 
+<img src="data/Art_lowill/0.png" width="300"/> <img src="data/Art_lowill/1.png" width="300"/> 
 
 ### result with a window size of 5, and a occlusion weight of 20 (left: naive, right: dynamic programming):
 
-<img src="results/art_lowill_naive.png" width="425"/> <img src="results/art_lowill_dp.png" width="425"/> 
+<img src="results/art_lowill_naive.png" width="300"/> <img src="results/art_lowill_dp.png" width="300"/> 
 
 ### constructed 3d point cloud
 
