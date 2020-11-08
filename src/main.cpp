@@ -9,36 +9,38 @@ int main(int argc, char** argv)
 {
 
     // Commandline arguments
-    if (argc != 4 && argc != 6 && argc != 8)
+    if (argc != 4 && argc != 7 && argc != 9)
     {
         std::cerr << "Usage: " << argv[0] << " IMAGE1 IMAGE2 OUTPUT_NAME" << std::endl;
         std::cerr << "or" << std::endl;
-        std::cerr << "Usage: " << argv[0] << " IMAGE1 IMAGE2 OUTPUT_NAME FOCAL_LENGTH BASELINE" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " IMAGE1 IMAGE2 OUTPUT_NAME FOCAL_LENGTH BASELINE DMIN" << std::endl;
         std::cerr << "or" << std::endl;
-        std::cerr << "Usage: " << argv[0] << " IMAGE1 IMAGE2 OUTPUT_NAME FOCAL_LENGTH BASELINE WINDOW_SIZE WEIGHT" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " IMAGE1 IMAGE2 OUTPUT_NAME FOCAL_LENGTH BASELINE DMIN WINDOW_SIZE WEIGHT" << std::endl;
         return 1;
     }
 
     cv::Mat image1 = cv::imread(argv[1], cv::IMREAD_GRAYSCALE);
     cv::Mat image2 = cv::imread(argv[2], cv::IMREAD_GRAYSCALE);
     const std::string output_file = argv[3];
-    const double scale = 3;
+    const double scale = 1;
     double focal_length, baseline, weight;
-    int window_size;
+    int window_size, dmin;
 
     if (argc == 4)
     {
-        std::cout << "Using defualt focal length (3740), default baseline (160), default window size (5), default weight (500)" << std::endl;
+        std::cout << "Using defualt focal length (3740), default baseline (160), default dmin (67), default window size (5), default weight (500)" << std::endl;
         focal_length = 3740;
         baseline = 160;
         window_size = 5;
         weight = 500;
+        dmin = 67;
     }
     else if (argc == 6)
     {
-        std::cout << "Using default window size (5), default weight (500)" << std::endl;
+        std::cout << "Using default window size (5), default weight (500), default dmin (67)" << std::endl;
         focal_length = std::atof(argv[4]);
         baseline = std::atof(argv[5]);
+        dmin = std::atoi(argv[6]);
         window_size = 5;
         weight = 500;
     }
@@ -46,8 +48,9 @@ int main(int argc, char** argv)
     {
         focal_length = std::atof(argv[4]);
         baseline = std::atof(argv[5]);
-        window_size = std::atoi(argv[6]);
-        weight = std::atof(argv[7]);
+        dmin = std::atoi(argv[6]);
+        window_size = std::atoi(argv[7]);
+        weight = std::atof(argv[8]);
     }
 
 
@@ -72,6 +75,7 @@ int main(int argc, char** argv)
     std::cout << "------------------ Parameters -------------------" << std::endl;
     std::cout << "focal_length = " << focal_length << std::endl;
     std::cout << "baseline = " << baseline << std::endl;
+    std::cout << "disparity added due to image cropping = " << dmin << std::endl;
     std::cout << "window_size = " << window_size << std::endl;
     std::cout << "occlusion weights = " << weight << std::endl;
     std::cout << "scaling of disparity images to show = " << scale << std::endl;
@@ -83,12 +87,12 @@ int main(int argc, char** argv)
     cv::Mat naive_disparities = cv::Mat::zeros(image1.size().height - window_size + 1, image1.size().width - window_size + 1, CV_8UC1);
     cv::Mat dp_disparities = cv::Mat::zeros(image1.size().height - window_size + 1, image1.size().width - window_size + 1, CV_8UC1);
 
-    //StereoEstimation_Naive(window_size, image1, image2, naive_disparities, scale);
+    StereoEstimation_Naive(window_size, image1, image2, naive_disparities, scale);
     StereoEstimation_Dynamic(window_size, weight, image1, image2, dp_disparities, scale);
 
     // Output //
     // reconstruction
-    Disparity2PointCloud(output_file, dp_disparities, baseline, focal_length, scale);
+    Disparity2PointCloud(output_file, dp_disparities, baseline, focal_length, dmin, scale);
 
     // save / display images
     std::stringstream out1;
@@ -179,7 +183,7 @@ void StereoEstimation_Dynamic(int window_size, double weight, cv::Mat& image1, c
                 double occ_1 = C.at<double>(i, j + 1) + weight;
                 double occ_2 = C.at<double>(i + 1, j) + weight;
                 cv::Mat part2(image2, cv::Rect(j, row - half_window_size, window_size, window_size));
-                double match = C.at<double>(i, j) + cv::norm(part1, part2, cv::NORM_L2SQR);
+                double match = C.at<double>(i, j) + cv::norm(part1, part2, cv::NORM_L2SQR) / num_elements_in_window;
                 if (match < occ_1 && match < occ_2)
                 {
                     // in this row, pixel i of image1, and pixel j of image2 match
@@ -229,13 +233,18 @@ void StereoEstimation_Dynamic(int window_size, double weight, cv::Mat& image1, c
                 break;
             }
         }
+        while (i >= 0)
+        {
+            dp_disparities.at<uchar>(row - half_window_size, i) = dp_disparities.at<uchar>(row - half_window_size, i + 1);
+            --i;
+        }
     }
 
     std::cout << "Calculating disparities for the dynamic approach... Done.\r" << std::flush;
     std::cout << std::endl;
 }
 
-void Disparity2PointCloud(const std::string& output_file, cv::Mat& disparities, double baseline, double focal_length, double scale)
+void Disparity2PointCloud(const std::string& output_file, cv::Mat& disparities, double baseline, double focal_length, int dmin, double scale)
 {
     std::stringstream out3d;
     out3d << output_file << ".xyz";
@@ -247,14 +256,14 @@ void Disparity2PointCloud(const std::string& output_file, cv::Mat& disparities, 
             << "%\r" << std::flush;
         for (int j = 0; j < disparities.size().width; ++j)
         {
-            int d = disparities.at<uchar>(i, j) / scale;
+            int d = disparities.at<uchar>(i, j) / scale + dmin;
             if (d == 0)
             {
                 continue;
             }
             
             const double Z = baseline * focal_length / d;
-            const double X = -1 * (baseline * (j + j + d)) / (2 * d);
+            const double X = (baseline * (j + j + d)) / (2 * d);
             const double Y = baseline * i / d;
             
             outfile << X << " " << Y << " " << Z << std::endl;
